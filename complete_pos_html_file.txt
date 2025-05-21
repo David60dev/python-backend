@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Electronic Shop POS System</title>
+  <style>
+    /* Background image for website & dashboard */
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: url("https://via.placeholder.com/1920x1080?text=Ultra+Tech") no-repeat center center fixed;
+      background-size: cover;
+    }
+    /* Make dashboard containers readable over background */
+    #dashboardContainer,
+    #receiptSection {
+      background: rgba(255, 255, 255, 0.9);
+      padding: 15px;
+      border: 1px solid #ccc;
+    }
+    h1, h2, h3 {
+      color: #333;
+    }
+    input, button {
+      padding: 8px;
+      margin: 4px 0;
+      font-size: 1em;
+    }
+    form {
+      margin-bottom: 20px;
+    }
+    #header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+    #companyInfo {
+      flex-grow: 1;
+      padding-left: 10px;
+    }
+    nav button {
+      margin-right: 5px;
+      padding: 10px 15px;
+      border: none;
+      background: #007BFF;
+      color: #fff;
+      cursor: pointer;
+    }
+    nav button:hover {
+      background: #0056b3;
+    }
+    /* Adjusted Receipt Section dimensions */
+    #receiptSection {
+      position: fixed;
+      top: 10%;
+      left: 30%;
+      width: 40%;
+      max-height: 400px;
+      overflow-y: auto;
+      z-index: 1000;
+      border: 2px solid #000;
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px;
+    }
+    .hidden {
+      display: none;
+    }
+    /* New styling for two-column layout for saleSection */
+    #saleContainer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .left-panel, .right-panel {
+      flex: 1;
+      min-width: 300px;
+      padding: 10px;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+    }
+    /* Styling for additional buttons */
+    .button {
+      padding: 8px 12px;
+      background: #007BFF;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      margin: 5px 0;
+    }
+    .button:hover {
+      background: #0056b3;
+    }
+    /* Receipt display (for on-screen view) */
+    .receipt {
+      background: #fff;
+      border: 1px solid #000;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
+    /* Adjust Cart Preview Position and Width */
+    #cartTable {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      background: rgba(255, 255, 255, 0.95);
+      z-index: 2000;
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Container -->
+  <div id="loginContainer">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <input type="text" id="loginUsername" placeholder="Username (min 12 chars)" required minlength="12">
+      <br>
+      <input type="password" id="loginPassword" placeholder="Password (min 12 chars)" required minlength="12">
+      <br>
+      <button type="submit">Login</button>
+    </form>
+    <p id="loginError" style="color:red;"></p>
+  </div>
+
+  <!-- Dashboard Container -->
+  <div id="dashboardContainer" class="hidden">
+    <!-- Header with Company Info & User Info -->
+    <div id="header">
+      <div id="companyDisplay">
+        <img id="companyLogo" src="" alt="Company Logo" style="height: 50px;">
+        <div id="companyInfo">
+          <h1 id="companyName">Your Company</h1>
+          <p id="companyAddress">123 Main St</p>
+          <p id="companyPhone">123-456-7890</p>
+          <p id="companyLocation">City, Country</p>
+        </div>
+      </div>
+      <div id="userInfo">
+        <span id="userLabel"></span>
+        <br>
+        <button id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <nav>
+      <button onclick="showSection('dashboardSection')">Dashboard</button>
+      <button onclick="showSection('createAccountSection')">Create Cashier Account</button>
+      <button onclick="showSection('saleSection')">Make Sale</button>
+      <button onclick="showSection('companyInfoSection')">Edit Company Info</button>
+    </nav>
+
+    <!-- Dashboard Main Section -->
+    <div id="dashboardSection">
+      <h2>Dashboard</h2>
+      <p>Welcome! Use the navigation buttons above to perform actions.</p>
+    </div>
+
+    <!-- Create Cashier Account Section (Admin Only) -->
+    <div id="createAccountSection" class="hidden">
+      <h2>Create Cashier Account</h2>
+      <form id="createAccountForm">
+        <input type="text" id="newUsername" placeholder="Username (min 12 chars)" required minlength="12">
+        <br>
+        <input type="password" id="newPassword" placeholder="Password (min 12 chars)" required minlength="12">
+        <br>
+        <button type="submit">Create Account</button>
+      </form>
+      <p id="createAccountMessage"></p>
+    </div>
+
+    <!-- Make Sale Section with Two Panels -->
+    <div id="saleSection" class="hidden">
+      <h2>Make Sale</h2>
+      <div id="saleContainer">
+        <!-- Left Panel: Sale Operations, Payment & Receipt -->
+        <div class="left-panel">
+          <!-- Inventory Items Section -->
+          <div id="inventorySection">
+            <h3>Inventory Items</h3>
+            <table id="inventoryTable">
+              <thead>
+                <tr>
+                  <th>Item Name</th>
+                  <th>Price (Ksh)</th>
+                  <th>Available</th>
+                  <th>Qty to Add</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <!-- Manual Entry for Items -->
+          <div style="margin-top:20px;">
+            <input type="text" id="itemName" placeholder="Item Name">
+            <input type="number" id="itemPrice" placeholder="Price (Ksh)">
+            <input type="number" id="itemQuantity" placeholder="Quantity">
+            <button class="button" onclick="addItem()">Add Item</button>
+          </div>
+          <!-- Cart Table (Cart Preview) -->
+          <table id="cartTable">
+            <thead>
+              <tr>
+                <th>Item Name</th>
+                <th>Price (Ksh)</th>
+                <th>Quantity</th>
+                <th>Subtotal (Ksh)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p>Total: Ksh <span id="totalAmount">0</span></p>
+          <!-- New Checkout Button using newCheckout() -->
+          <button class="button" onclick="newCheckout()">Checkout & Print Receipt</button>
+          <!-- Payment Methods -->
+          <div style="margin-top:15px;">
+            <h3>Payment Methods</h3>
+            <button class="button" onclick="selectPayment('cash')">Cash</button>
+            <button class="button" onclick="selectPayment('card')">Card</button>
+            <button class="button" onclick="selectPayment('mobile')">Mobile Payment</button>
+            <div id="qrCodeDisplay" class="hidden">
+              <h4>Mobile Payment QR</h4>
+              <img id="qrCodeImage" src="" alt="QR Code" width="150" height="150">
+            </div>
+          </div>
+          <!-- Payment Details -->
+          <div id="paymentDetails" class="hidden" style="margin-top:15px;">
+            <!-- Cash Payment Section -->
+            <div id="cashPaymentSection" class="hidden">
+              <p id="cashTotal"></p>
+              <p>Enter Cash Amount Paid:</p>
+              <input type="number" id="cashAmountPaid" placeholder="Amount paid" step="0.01">
+              <button class="button" onclick="confirmCashPayment()">Confirm Cash Payment</button>
+              <p id="balanceDisplay"></p>
+            </div>
+            <!-- Card Payment Section with Card Details Dashboard -->
+            <div id="cardPaymentSection" class="hidden">
+              <p id="cardTotal"></p>
+              <div id="cardDetailsDashboard">
+                <h4>Enter Card Details</h4>
+                <label for="cardNumber">Valid Card No.:</label>
+                <input type="text" id="cardNumber" placeholder="Valid Card No.">
+                <br>
+                <label for="cardExpiry">Expiry (mm/yy):</label>
+                <input type="text" id="cardExpiry" placeholder="mm/yy">
+                <br>
+                <label for="cardCVV">Valid CVV:</label>
+                <input type="text" id="cardCVV" placeholder="CVV">
+              </div>
+              <button class="button" onclick="confirmOtherPayment()">Confirm Card Payment</button>
+            </div>
+            <!-- Mobile Payment Section -->
+            <div id="mobilePaymentSection" class="hidden">
+              <p id="mobileTotal"></p>
+              <button class="button" onclick="confirmOtherPayment()">Confirm Mobile Payment</button>
+            </div>
+          </div>
+          <!-- Receipt Display (for on-screen view) -->
+          <div id="receiptDisplay" class="receipt"></div>
+          <hr>
+        </div>
+        <!-- Right Panel: Extra Inventory & Cart Operations, Barcode Scanner -->
+        <div class="right-panel">
+          <h3>Store Inventory</h3>
+          <div id="inventoryList">
+            <p>(Inventory list loaded from system.)</p>
+          </div>
+          <button class="button" onclick="openNewItemModal()">Add/Remove Item</button>
+          <h3>Cart Operations</h3>
+          <button class="button" onclick="addItemToCartPrompt()">Add Item to Cart</button>
+          <button class="button" onclick="removeItemFromCartPrompt()">Remove Item from Cart</button>
+          <!-- Barcode Scanner Section -->
+          <div style="margin-top:15px;">
+            <label for="barcodeScannerInput">Scan Product Barcode:</label>
+            <input type="text" id="barcodeScannerInput" placeholder="Scan barcode here">
+            <button class="button" onclick="scanProduct()">Scan</button>
+          </div>
+        </div>
+      </div>
+      <p id="saleMessage"></p>
+    </div>
+
+    <!-- Edit Company Info Section -->
+    <div id="companyInfoSection" class="hidden">
+      <h2>Edit Company Info</h2>
+      <form id="companyInfoForm">
+        <input type="text" id="inputCompanyName" placeholder="Company Name">
+        <br>
+        <input type="text" id="inputCompanyLogo" placeholder="Logo URL">
+        <br>
+        <input type="text" id="inputCompanyAddress" placeholder="Address">
+        <br>
+        <input type="text" id="inputCompanyPhone" placeholder="Phone">
+        <br>
+        <input type="text" id="inputCompanyLocation" placeholder="Location">
+        <br>
+        <button type="submit">Save</button>
+      </form>
+      <p id="companyInfoMessage"></p>
+    </div>
+
+    <!-- Receipt Section (Modal) -->
+    <div id="receiptSection" class="hidden">
+      <div id="receiptContent">
+        <!-- Receipt content gets generated dynamically -->
+      </div>
+      <button class="button" onclick="printReceipt()">Print Receipt</button>
+      <button class="button" onclick="closeReceipt()">Close</button>
+    </div>
+  </div>
+
+  <script>
+    // Global Variables
+    let currentUser = null;
+    let users = [];
+    const maxCashierAccounts = 3;
+    let cart = [];
+    let inventoryItems = [];
+    let currentTotal = 0; // to store current sale total for payment processing
+
+    // Default Inventory Items (20 items)
+    const defaultItems = [
+      { name: "Smartphone", price: 35000, quantity: 10 },
+      { name: "Laptop", price: 85000, quantity: 5 },
+      { name: "Tablet", price: 20000, quantity: 8 },
+      { name: "Headphones", price: 1500, quantity: 50 },
+      { name: "Smartwatch", price: 5000, quantity: 20 },
+      { name: "Camera", price: 25000, quantity: 5 },
+      { name: "Printer", price: 9000, quantity: 10 },
+      { name: "Monitor", price: 12000, quantity: 7 },
+      { name: "Keyboard", price: 800, quantity: 30 },
+      { name: "Mouse", price: 600, quantity: 40 },
+      { name: "USB Cable", price: 300, quantity: 100 },
+      { name: "External Hard Drive", price: 7000, quantity: 10 },
+      { name: "Router", price: 4500, quantity: 15 },
+      { name: "Speakers", price: 2500, quantity: 12 },
+      { name: "Charger", price: 500, quantity: 25 },
+      { name: "Power Bank", price: 2200, quantity: 18 },
+      { name: "Smart TV", price: 50000, quantity: 3 },
+      { name: "Gaming Console", price: 40000, quantity: 4 },
+      { name: "VR Headset", price: 15000, quantity: 6 },
+      { name: "Drone", price: 30000, quantity: 3 }
+    ];
+
+    // Load users from localStorage or initialize with default admin
+    function loadUsers() {
+      let storedUsers = localStorage.getItem('users');
+      if (storedUsers) {
+        users = JSON.parse(storedUsers);
+      } else {
+        users = [{ username: "administrator", password: "defaultadminpass", role: "admin" }];
+        localStorage.setItem('users', JSON.stringify(users));
+      }
+    }
+
+    function saveUsers() {
+      localStorage.setItem('users', JSON.stringify(users));
+    }
+
+    // Load and display company info from localStorage or defaults
+    function loadCompanyInfo() {
+      const company = JSON.parse(localStorage.getItem('companyInfo')) || {
+        name: "Your Company",
+        logo: "https://via.placeholder.com/100",
+        address: "123 Main St",
+        phone: "123-456-7890",
+        location: "City, Country"
+      };
+      document.getElementById('companyName').innerText = company.name;
+      document.getElementById('companyLogo').src = company.logo;
+      document.getElementById('companyAddress').innerText = company.address;
+      document.getElementById('companyPhone').innerText = company.phone;
+      document.getElementById('companyLocation').innerText = company.location;
+    }
+
+    function saveCompanyInfo(company) {
+      localStorage.setItem('companyInfo', JSON.stringify(company));
+      loadCompanyInfo();
+    }
+
+    // Load inventory items from localStorage or initialize with default items
+    function loadInventoryItems() {
+      let storedInventory = localStorage.getItem('inventoryItems');
+      if (storedInventory) {
+        inventoryItems = JSON.parse(storedInventory);
+      } else {
+        inventoryItems = defaultItems;
+        localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
+      }
+    }
+
+    function updateInventoryList() {
+      const tbody = document.getElementById('inventoryTable').getElementsByTagName('tbody')[0];
+      tbody.innerHTML = "";
+      inventoryItems.forEach((item, index) => {
+        let row = tbody.insertRow();
+        row.insertCell(0).innerText = item.name;
+        row.insertCell(1).innerText = "Ksh " + item.price.toFixed(2);
+        row.insertCell(2).innerText = item.quantity;
+        let qtyCell = row.insertCell(3);
+        qtyCell.innerHTML = `<input type="number" id="addQty_${index}" value="1" style="width:60px;" min="1">`;
+        let actionCell = row.insertCell(4);
+        actionCell.innerHTML = `<button class="button" onclick="addFromInventory(${index})">Add to Cart</button>`;
+      });
+    }
+
+    function addFromInventory(index) {
+      let qtyInput = document.getElementById('addQty_' + index);
+      let qty = parseInt(qtyInput.value);
+      if (isNaN(qty) || qty <= 0) {
+        alert("Enter a valid quantity.");
+        return;
+      }
+      if (qty > inventoryItems[index].quantity) {
+        alert("Not enough stock available.");
+        return;
+      }
+      const item = inventoryItems[index];
+      const cartItem = { name: item.name, price: item.price, quantity: qty, subtotal: item.price * qty };
+      cart.push(cartItem);
+      updateCartTable();
+      inventoryItems[index].quantity -= qty;
+      localStorage.setItem('inventoryItems', JSON.stringify(inventoryItems));
+      updateInventoryList();
+    }
+
+    function showSection(sectionId) {
+      const sections = ["dashboardSection", "createAccountSection", "saleSection", "companyInfoSection"];
+      sections.forEach(id => {
+        document.getElementById(id).className = (id === sectionId) ? "" : "hidden";
+      });
+    }
+
+    // --- Authentication Actions ---
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value.trim();
+      if (username.length < 12 || password.length < 12) {
+        document.getElementById('loginError').innerText = "Username and password must be at least 12 characters.";
+        return;
+      }
+      loadUsers();
+      const user = users.find(u => u.username === username && u.password === password);
+      if (user) {
+        currentUser = user;
+        document.getElementById('userLabel').innerText =
+          "Logged in as: " + user.username + " (" + (user.role === 'admin' ? "Admin" : "Cashier") + ")";
+        document.getElementById('loginContainer').className = "hidden";
+        document.getElementById('dashboardContainer').className = "";
+        loadCompanyInfo();
+        loadInventoryItems();
+        updateInventoryList();
+        showSection('dashboardSection');
+      } else {
+        document.getElementById('loginError').innerText = "Invalid credentials.";
+      }
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', function() {
+      currentUser = null;
+      document.getElementById('dashboardContainer').className = "hidden";
+      document.getElementById('loginContainer').className = "";
+    });
+
+    // --- Create Cashier Account ---
+    document.getElementById('createAccountForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (currentUser.role !== "admin") {
+        document.getElementById('createAccountMessage').innerText = "Only admin can create accounts.";
+        return;
+      }
+      const newUsername = document.getElementById('newUsername').value.trim();
+      const newPassword = document.getElementById('newPassword').value.trim();
+      if(newUsername.length < 12 || newPassword.length < 12){
+        document.getElementById('createAccountMessage').innerText = "Username and password must be at least 12 characters.";
+        return;
+      }
+      const cashierCount = users.filter(u => u.role === "cashier").length;
+      if(cashierCount >= maxCashierAccounts) {
+        document.getElementById('createAccountMessage').innerText = "Maximum cashier accounts reached.";
+        return;
+      }
+      if (users.find(u => u.username === newUsername)) {
+        document.getElementById('createAccountMessage').innerText = "Username already exists.";
+        return;
+      }
+      users.push({ username: newUsername, password: newPassword, role: "cashier" });
+      saveUsers();
+      document.getElementById('createAccountMessage').innerText = "Cashier account created successfully.";
+      document.getElementById('newUsername').value = "";
+      document.getElementById('newPassword').value = "";
+    });
+
+    // --- Make Sale Section Functions ---
+    function addItem() {
+      const itemName = document.getElementById('itemName').value.trim();
+      const itemPrice = parseFloat(document.getElementById('itemPrice').value);
+      const itemQuantity = parseInt(document.getElementById('itemQuantity').value);
+      if(itemName === "" || isNaN(itemPrice) || isNaN(itemQuantity) || itemPrice <= 0 || itemQuantity <= 0) {
+        alert("Fill all fields with valid values.");
+        return;
+      }
+      const item = { name: itemName, price: itemPrice, quantity: itemQuantity, subtotal: itemPrice * itemQuantity };
+      cart.push(item);
+      updateCartTable();
+      document.getElementById('itemName').value = "";
+      document.getElementById('itemPrice').value = "";
+      document.getElementById('itemQuantity').value = "";
+    }
+
+    function updateCartTable() {
+      const tbody = document.getElementById('cartTable').getElementsByTagName('tbody')[0];
+      tbody.innerHTML = "";
+      let total = 0;
+      cart.forEach(item => {
+        total += item.subtotal;
+        const row = tbody.insertRow();
+        row.insertCell(0).innerText = item.name;
+        row.insertCell(1).innerText = "Ksh " + item.price.toFixed(2);
+        row.insertCell(2).innerText = item.quantity;
+        row.insertCell(3).innerText = "Ksh " + item.subtotal.toFixed(2);
+      });
+      document.getElementById('totalAmount').innerText = total.toFixed(2);
+      currentTotal = total;
+    }
+
+    // Generate an 8-digit receipt number (using last 8 digits of timestamp)
+    function generateReceiptNumber() {
+      const timestamp = Date.now().toString();
+      return timestamp.slice(-8);
+    }
+
+    // newCheckout() replaces the standard checkout; it calls checkout()
+    function newCheckout() {
+      checkout();
+    }
+
+    function checkout() {
+      if(cart.length === 0) {
+        document.getElementById('saleMessage').innerText = "Cart is empty.";
+        return;
+      }
+      let total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+      currentTotal = total;
+      const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked') ? 
+                            document.querySelector('input[name="paymentMethod"]:checked').value : "cash";
+      const receiptDiv = document.getElementById('receiptContent');
+      const receiptNumber = generateReceiptNumber();
+      receiptDiv.innerHTML = "";
+      const company = JSON.parse(localStorage.getItem('companyInfo')) || {};
+      receiptDiv.innerHTML += "<h2>" + company.name + "</h2>";
+      receiptDiv.innerHTML += "<p>" + company.address + "</p>";
+      receiptDiv.innerHTML += "<p>" + company.phone + " | " + company.location + "</p>";
+      receiptDiv.innerHTML += "<hr>";
+      receiptDiv.innerHTML += "<p>Receipt No.: " + receiptNumber + "</p>";
+      receiptDiv.innerHTML += "<p>Cashier: " + currentUser.username + " (" + (currentUser.role === 'admin' ? "Admin" : "Cashier") + ")</p>";
+      receiptDiv.innerHTML += "<table border='1' width='100%'><tr><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th></tr>";
+      cart.forEach(item => {
+        receiptDiv.innerHTML += "<tr><td>" + item.name + "</td><td>" +
+                                "Ksh " + item.price.toFixed(2) + "</td><td>" +
+                                item.quantity + "</td><td>" +
+                                "Ksh " + item.subtotal.toFixed(2) + "</td></tr>";
+      });
+      receiptDiv.innerHTML += "</table>";
+      receiptDiv.innerHTML += "<h3>Total: Ksh " + total.toFixed(2) + "</h3>";
+      receiptDiv.innerHTML += "<p>Payment Method: " + paymentMethod + "</p>";
+      // Show the receipt modal
+      document.getElementById('receiptSection').className = "";
+      cart = [];
+      updateCartTable();
+      document.getElementById('saleMessage').innerText = "Sale processed.";
+      // Process payment and save transaction stubs
+      processPayment(total).then(result => {
+        console.log(result);
+        const transaction = { receiptNumber, total, paymentMethod, date: new Date().toLocaleString() };
+        saveTransactionData(transaction);
+      });
+    }
+
+    // New script functions for formatting and printing receipt
+    function formatAmount(amount) {
+      return amount.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    
+    function printReceipt(receiptContent) {
+      const printWindow = window.open("", "Print Receipt", "width=200,height=400");
+      printWindow.document.write("<html><head><title>Receipt</title>");
+      printWindow.document.write("<style>body { font-family: Arial, sans-serif; padding:20px; } pre { font-size: 9px; }</style>");
+      printWindow.document.write("</head><body>");
+      printWindow.document.write("<pre>" + receiptContent + "</pre>");
+      printWindow.document.write("</body></html>");
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    }
+    
+    // Dummy function to simulate processing payment.
+    function processPayment(total) {
+      return Promise.resolve("Payment processed");
+    }
+    
+    // Dummy function to simulate saving transaction data.
+    function saveTransactionData(transaction) {
+      console.log("Transaction saved:", transaction);
+    }
+    
+    // Payment Methods functionality
+    function selectPayment(paymentType) {
+      document.getElementById("cashPaymentSection").className = "hidden";
+      document.getElementById("cardPaymentSection").className = "hidden";
+      document.getElementById("mobilePaymentSection").className = "hidden";
+      document.getElementById("qrCodeDisplay").className = "hidden";
+      if(paymentType === 'cash'){
+        document.getElementById("cashPaymentSection").className = "";
+      } else if(paymentType === 'card'){
+        document.getElementById("cardPaymentSection").className = "";
+      } else if(paymentType === 'mobile'){
+        document.getElementById("mobilePaymentSection").className = "";
+        document.getElementById("qrCodeDisplay").className = "";
+      }
+      document.getElementById("paymentDetails").className = "";
+    }
+    
+    function confirmCashPayment() {
+      const cashPaid = parseFloat(document.getElementById("cashAmountPaid").value);
+      if(isNaN(cashPaid)) {
+        alert("Enter a valid cash amount.");
+        return;
+      }
+      if(cashPaid < currentTotal) {
+        alert("Insufficient amount paid.");
+        return;
+      }
+      const balance = cashPaid - currentTotal;
+      document.getElementById("balanceDisplay").innerText = "Balance: Ksh " + formatAmount(balance);
+      // Hide payment details after confirming
+      document.getElementById("paymentDetails").className = "hidden";
+      printReceipt(document.getElementById('receiptContent').innerText);
+    }
+    
+    function confirmOtherPayment() {
+      alert("Payment confirmed.");
+      document.getElementById("paymentDetails").className = "hidden";
+      printReceipt(document.getElementById('receiptContent').innerText);
+    }
+    
+    // Stub functions for Right Panel operations
+    function openNewItemModal() {
+      alert("Open new item modal (functionality not implemented).");
+    }
+    
+    function addItemToCartPrompt() {
+      alert("Prompt to add item to cart (functionality not implemented).");
+    }
+    
+    function removeItemFromCartPrompt() {
+      alert("Prompt to remove item from cart (functionality not implemented).");
+    }
+    
+    function scanProduct() {
+      const barcode = document.getElementById("barcodeScannerInput").value;
+      alert("Barcode scanned: " + barcode + " (functionality not implemented).");
+    }
+    
+    function closeReceipt() {
+      document.getElementById('receiptSection').className = "hidden";
+    }
+
+    // Initialize on page load
+    window.onload = function() {
+      loadUsers();
+      loadCompanyInfo();
+      loadInventoryItems();
+      updateInventoryList();
+    };
+  </script>
+</body>
+</html>
