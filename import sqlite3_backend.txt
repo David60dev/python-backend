@@ -1,0 +1,296 @@
+import sqlite3
+import datetime
+import hashlib
+from flask import Flask, request, jsonify, session, g
+from functools import wraps
+
+app = Flask(__name__)
+app.secret_key = 'your_secret_key_here'
+DATABASE = 'pos.db'
+
+# ------------------------------ Database Connection ------------------------------
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+# ------------------------------ Database Initialization ------------------------------
+def init_db():
+    with app.app_context():
+        db = get_db()
+        cursor = db.cursor()
+        # Users table: storing username, password, and role ('admin' or 'cashier')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'cashier'
+            )
+        ''')
+        # Inventory table: items available
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                price REAL NOT NULL,
+                quantity INTEGER NOT NULL
+            )
+        ''')
+        # Company Info: a single record that stores company details
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS company_info (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                logo TEXT,
+                address TEXT,
+                phone TEXT,
+                location TEXT
+            )
+        ''')
+        # Transactions table: store sales data (with card details if applicable)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                receipt_no TEXT,
+                datetime TEXT,
+                total REAL,
+                payment_method TEXT,
+                card_number TEXT,
+                card_expiry TEXT,
+                card_cvv TEXT
+            )
+        ''')
+        # Transaction Items: list each item sold per transaction
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS transaction_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id INTEGER,
+                item_name TEXT,
+                price REAL,
+                quantity INTEGER,
+                subtotal REAL,
+                FOREIGN KEY(transaction_id) REFERENCES transactions(id)
+            )
+        ''')
+        # Insert default admin if not exists
+        cursor.execute("SELECT * FROM users WHERE username = ?", ('administrator',))
+        if cursor.fetchone() is None:
+            cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                           ('administrator', 'defaultadminpass', 'admin'))
+        # Insert default company info if not exists
+        cursor.execute("SELECT * FROM company_info")
+        if cursor.fetchone() is None:
+            cursor.execute("INSERT INTO company_info (name, logo, address, phone, location) VALUES (?, ?, ?, ?, ?)",
+                           ('Your Company', 'https://via.placeholder.com/100', '123 Main St', '123-456-7890', 'City, Country'))
+        db.commit()
+
+init_db()
+
+# ------------------------------ Helper Functions ------------------------------
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'error': 'Authentication required'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+def hash_password(password):
+    # For production, consider using a more secure method (bcrypt, etc.)
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+# ------------------------------ API Endpoints ------------------------------
+
+# Authentication Endpoints
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    # For demonstration, we assume plain text passwords as stored above.
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+    user = cursor.fetchone()
+    if user:
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['role'] = user['role']
+        return jsonify({'message': 'Login successful', 'role': user['role']}), 200
+    else:
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def api_logout():
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+# Admin-only Registration Endpoint for Cashier Accounts
+@app.route('/api/register', methods=['POST'])
+@login_required
+def api_register():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Only admin can register new accounts'}), 403
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'cashier')
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    if len(username) < 12 or len(password) < 12:
+        return jsonify({'error': 'Username and password must be at least 12 characters'}), 400
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, password, role))
+        db.commit()
+        return jsonify({'message': 'User registered successfully'}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Username already exists'}), 409
+
+# Inventory Endpoints
+@app.route('/api/inventory', methods=['GET'])
+@login_required
+def api_get_inventory():
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM inventory")
+    items = cursor.fetchall()
+    inventory = [dict(item) for item in items]
+    return jsonify({'inventory': inventory}), 200
+
+@app.route('/api/inventory', methods=['POST'])
+@login_required
+def api_add_inventory():
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    quantity = data.get('quantity')
+    if not name or price is None or quantity is None:
+        return jsonify({'error': 'Name, price, and quantity required'}), 400
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("INSERT INTO inventory (name, price, quantity) VALUES (?, ?, ?)", (name, price, quantity))
+    db.commit()
+    return jsonify({'message': 'Inventory item added successfully'}), 201
+
+@app.route('/api/inventory/<int:item_id>', methods=['PUT'])
+@login_required
+def api_update_inventory(item_id):
+    data = request.get_json()
+    name = data.get('name')
+    price = data.get('price')
+    quantity = data.get('quantity')
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE inventory SET name = ?, price = ?, quantity = ? WHERE id = ?", (name, price, quantity, item_id))
+    db.commit()
+    return jsonify({'message': 'Inventory item updated successfully'}), 200
+
+@app.route('/api/inventory/<int:item_id>', methods=['DELETE'])
+@login_required
+def api_delete_inventory(item_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM inventory WHERE id = ?", (item_id,))
+    db.commit()
+    return jsonify({'message': 'Inventory item deleted successfully'}), 200
+
+# Company Info Endpoints
+@app.route('/api/company', methods=['GET'])
+@login_required
+def api_get_company():
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM company_info LIMIT 1")
+    company = cursor.fetchone()
+    if company:
+        return jsonify(dict(company)), 200
+    else:
+        return jsonify({'error': 'Company info not found'}), 404
+
+@app.route('/api/company', methods=['POST'])
+@login_required
+def api_update_company():
+    data = request.get_json()
+    name = data.get('name')
+    logo = data.get('logo')
+    address = data.get('address')
+    phone = data.get('phone')
+    location = data.get('location')
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("UPDATE company_info SET name = ?, logo = ?, address = ?, phone = ?, location = ? WHERE id = 1",
+                   (name, logo, address, phone, location))
+    db.commit()
+    return jsonify({'message': 'Company info updated successfully'}), 200
+
+# Sales Processing Endpoint
+@app.route('/api/sale', methods=['POST'])
+@login_required
+def api_process_sale():
+    # Expected JSON payload:
+    # { "cart": [ { "name": ..., "price": ..., "quantity": ..., "subtotal": ... }, ... ],
+    #   "total": ...,
+    #   "payment_method": "cash" or "card" or "mobile",
+    #   Optional (if card): "card_number": ..., "card_expiry": ..., "card_cvv": ... }
+    data = request.get_json()
+    cart = data.get('cart')
+    total = data.get('total')
+    payment_method = data.get('payment_method')
+    card_number = data.get('card_number')
+    card_expiry = data.get('card_expiry')
+    card_cvv = data.get('card_cvv')
+    if not cart or total is None or not payment_method:
+        return jsonify({'error': 'Cart, total, and payment method required'}), 400
+    
+    db = get_db()
+    cursor = db.cursor()
+    receipt_no = str(datetime.datetime.now().timestamp()).replace('.', '')[-8:]  # Simple 8-digit receipt number
+    sale_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    cursor.execute(
+        """INSERT INTO transactions 
+           (receipt_no, datetime, total, payment_method, card_number, card_expiry, card_cvv) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (receipt_no, sale_datetime, total, payment_method, card_number, card_expiry, card_cvv)
+    )
+    transaction_id = cursor.lastrowid
+    
+    for item in cart:
+        cursor.execute(
+            "INSERT INTO transaction_items (transaction_id, item_name, price, quantity, subtotal) VALUES (?, ?, ?, ?, ?)",
+            (transaction_id, item.get('name'), item.get('price'), item.get('quantity'), item.get('subtotal'))
+        )
+        # Here one could update inventory quantities as needed.
+    
+    db.commit()
+    return jsonify({'message': 'Sale processed successfully', 'receipt_no': receipt_no}), 200
+
+# Sales Report Endpoint (for today's sales)
+@app.route('/api/sales_report', methods=['GET'])
+@login_required
+def api_sales_report():
+    db = get_db()
+    cursor = db.cursor()
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    cursor.execute("SELECT * FROM transactions WHERE datetime LIKE ?", (today + '%',))
+    transactions = cursor.fetchall()
+    report = [dict(t) for t in transactions]
+    total_sales = sum(t['total'] for t in transactions)
+    return jsonify({'sales_report': report, 'total_sales': total_sales}), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
